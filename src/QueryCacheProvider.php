@@ -1,14 +1,8 @@
 <?php
 
-namespace Grafite\Cache;
+namespace Grafite\QueryCache;
 
-use Exception;
-use Grafite\Cache\Stores\SqliteStore;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\ServiceProvider;
-use Grafite\Cache\Commands\CreateCacheDatabase;
-use Grafite\Cache\Commands\CreateCacheLocksTable;
 
 class QueryCacheProvider extends ServiceProvider
 {
@@ -19,9 +13,9 @@ class QueryCacheProvider extends ServiceProvider
      */
     public function boot()
     {
-         $this->publishes([
-            dirname(__DIR__).'/config/query-cache.php' => config_path('query-cache.php'),
-        ], 'grafite-query-cache');
+        $this->publishes([
+            __DIR__.'/../config/query-cache.php' => base_path('config/query-cache.php'),
+        ]);
     }
 
     /**
@@ -32,8 +26,7 @@ class QueryCacheProvider extends ServiceProvider
     public function register()
     {
         // $this->commands([
-        //     CreateCacheDatabase::class,
-        //     CreateCacheLocksTable::class,
+        //     QueryCachePurgeTag::class,
         // ]);
     }
 }
