@@ -12,3 +12,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ### This package is built on top of: https://github.com/renoki-co/laravel-eloquent-query-cache
 
 https://github.com/renoki-co/laravel-eloquent-query-cache/blob/master/LICENSE
+
+### This package incorporates core code plucked from: https://github.com/fico7489/laravel-pivot
+
+https://github.com/fico7489/laravel-pivot/blob/master/LICENSE
+
