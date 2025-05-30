@@ -31,7 +31,8 @@ class FlushCacheOnUpdatePivotTest extends TestCase
         // We can see there is an attached role
         $this->assertEquals(1, DB::table('role_user')->count());
 
-        Role::flushQueryCache();
+        // This shouldnt be needed because the attach should flush the cache
+        // Role::flushQueryCache();
 
         $storedRoles = $user->roles()->get();
 
@@ -43,7 +44,7 @@ class FlushCacheOnUpdatePivotTest extends TestCase
         $user->roles()->detach($role->id);
 
         // There is no easy way around this, so we have to do it manually
-        Role::flushQueryCache();
+        // Role::flushQueryCache();
 
         $storedRoles = $user->roles()->get();
 

@@ -4,7 +4,6 @@ namespace Grafite\QueryCache\Observers;
 
 use Exception;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 
 class FlushQueryCacheObserver
 {
@@ -59,6 +58,45 @@ class FlushQueryCacheObserver
     }
 
     /**
+     * Handle the Model "pivotAttached" event.
+     *
+     * @return void
+     */
+    public function pivotAttached(Model $model, $relation, $pivotedModels)
+    {
+        $this->invalidateCache($model, $relation, $pivotedModels);
+    }
+
+    /**
+     * Handle the Model "pivotDetached" event.
+     *
+     * @return void
+     */
+    public function pivotDetached(Model $model, $relation, $pivotedModels)
+    {
+        $this->invalidateCache($model, $relation, $pivotedModels);
+    }
+
+    /**
+     * Handle the Model "pivotUpdated" event.
+     *
+     * @return void
+     */
+    public function pivotUpdated(Model $model, $relation, $pivotedModels)
+    {
+        $this->invalidateCache($model, $relation, $pivotedModels);
+    }
+    /**
+     * Handle the Model "pivotUpdating" event.
+     *
+     * @return void
+     */
+    public function pivotUpdating(Model $model, $relation, $pivotedModels)
+    {
+        $this->invalidateCache($model, $relation, $pivotedModels);
+    }
+
+    /**
      * Invalidate the cache for a model.
      *
      * @param  string|null  $relation
@@ -70,7 +108,7 @@ class FlushQueryCacheObserver
     {
         $class = get_class($model);
 
-        $tags = $model->getCacheTagsToInvalidateOnUpdate($relation, $pivotedModels);
+        $tags = $model->getCacheTagsToInvalidateOnUpdate($relation);
 
         if (! $tags) {
             throw new Exception('Automatic invalidation for '.$class.' works only if at least one tag to be invalidated is specified.');
