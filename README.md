@@ -2,8 +2,8 @@
 
 **QueryCache** - A general query result caching system for Eloquent models.
 
-[![Build Status](https://github.com/GrafiteInc/QueryCache/workflows/PHP%20Package%20Tests/badge.svg?branch=main)](https://github.com/GrafiteInc/QueryCache/actions?query=workflow%3A%22PHP+Package+Tests%22)
-[![Maintainability](https://api.codeclimate.com/v1/badges/a90e41bd64d41508ef0e/maintainability)](https://codeclimate.com/github/GrafiteInc/QueryCache/maintainability)
+[![Build Status](https://github.com/GrafiteInc/QueryCache/actions/workflows/php-package-tests.yml/badge.svg?branch=main)](https://github.com/GrafiteInc/QueryCache/actions/workflows/php-package-tests.yml)
+[![Maintainability](https://qlty.sh/badges/66787aa9-2bf8-4d5a-8fef-f1d23511e787/maintainability.svg)](https://qlty.sh/gh/GrafiteInc/projects/QueryCache)
 [![Packagist](https://img.shields.io/packagist/dt/grafite/query-cache.svg)](https://packagist.org/packages/grafite/query-cache)
 [![license](https://img.shields.io/github/license/mashape/apistatus.svg)](https://packagist.org/packages/grafite/query-cache)
 
