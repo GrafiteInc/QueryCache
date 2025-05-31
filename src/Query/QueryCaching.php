@@ -275,4 +275,29 @@ trait QueryCaching
     {
         return config('query-cache.prefix', 'qc');
     }
+
+    public function appendCacheTags($tags)
+    {
+        if (is_string($tags)) {
+            $tags = [$tags];
+        }
+
+        if (is_array($this->cacheBaseTags)) {
+            $this->cacheBaseTags = array_merge($this->cacheBaseTags, $tags);
+        } else {
+            $this->cacheBaseTags = $tags;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Get the cache tags for the query.
+     *
+     * @return array
+     */
+    public function getCacheTags()
+    {
+        return $this->cacheBaseTags ?: [];
+    }
 }
