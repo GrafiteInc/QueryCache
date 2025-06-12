@@ -50,4 +50,40 @@ class FlushCacheOnUpdatePivotTest extends TestCase
 
         $this->assertEquals(0, $storedRoles->count());
     }
+
+    public function test_belongs_to_many_with_sync()
+    {
+        $key = 'qc:sqlitegetselect "roles".*, "role_user"."user_id" as "pivot_user_id", "role_user"."role_id" as "pivot_role_id" from "roles" inner join "role_user" on "roles"."id" = "role_user"."role_id" where "role_user"."user_id" = ?a:1:{i:0;i:1;}';
+
+        $user = factory(User::class)->create();
+        $role = factory(Role::class)->create();
+
+        $storedRoles = $user->roles()->get();
+
+        $cache = $this->getCacheWithTags($key, [
+            'Grafite\QueryCache\Test\Models\Role',
+        ]);
+
+        $this->assertNull($cache->first());
+        $this->assertEquals(0, $storedRoles->count());
+        $this->assertEquals(0, DB::table('role_user')->count());
+
+        $user->roles()->sync($role->id);
+
+        // We can see there is an attached role
+        $this->assertEquals(1, DB::table('role_user')->count());
+
+        $storedRoles = $user->roles()->get();
+
+        $this->assertEquals(
+            $role->id,
+            $storedRoles->first()->id
+        );
+
+        $user->roles()->detach($role->id);
+
+        $storedRoles = $user->roles()->get();
+
+        $this->assertEquals(0, $storedRoles->count());
+    }
 }
