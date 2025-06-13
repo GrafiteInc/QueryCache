@@ -3,6 +3,18 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 ----
 
+## [v1.1.0] - 2025-06-13
+
+### Fix
+- adjustments for laravel versions and memo
+
+### Chore
+- Merge branch 'main' into develop
+- Changelog.md update
+
+### Feature
+- memoization for even faster caching
+
 ## [v1.0.3] - 2025-06-12
 
 ### Chore
