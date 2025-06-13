@@ -2,8 +2,8 @@
 
 namespace Grafite\QueryCache\Query;
 
-use BadMethodCallException;
 use DateTime;
+use BadMethodCallException;
 
 trait QueryCaching
 {
@@ -46,11 +46,20 @@ trait QueryCaching
         $callback = $this->getQueryCacheCallback($method, $columns, $id);
         $time = $this->getCacheFor();
 
-        if ($time instanceof DateTime || $time > 0) {
-            return $cache->remember($key, $time, $callback);
+        // If the cache is in use, check the in memory cache first
+        if (cache()->memo('file')->has($key)) {
+            return cache()->memo('file')->get($key);
         }
 
-        return $cache->rememberForever($key, $callback);
+        if ($time instanceof DateTime || $time > 0) {
+            $value = $cache->remember($key, $time, $callback);
+        } else {
+            $value = $cache->rememberForever($key, $callback);
+        }
+
+        cache()->memo('file')->put($key, $value);
+
+        return $value;
     }
 
     /**
@@ -127,6 +136,8 @@ trait QueryCaching
         if (! $tags) {
             $tags = $this->getCacheBaseTags();
         }
+
+        cache()->memo('file')->flush();
 
         foreach ($tags as $tag) {
             $this->flushQueryCacheWithTag($tag);
