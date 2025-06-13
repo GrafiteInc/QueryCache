@@ -95,6 +95,10 @@ class GetTest extends TestCase
         );
 
         // Test the memoized cache
+        if (! method_exists(cache(), 'memo')) {
+            $this->markTestSkipped('Memo cache is not available.');
+        }
+
         $this->assertTrue(cache()->memo('file')->has('qc:sqlitegetselect "name" from "posts"a:0:{}'));
     }
 }

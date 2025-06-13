@@ -24,7 +24,7 @@
         "laravel/legacy-factories": "^1.4",
         "livewire/livewire": "dev-main",
         "mockery/mockery": "^1.6",
-        "orchestra/testbench": "^10.0",
+        "orchestra/testbench": "^9.0|^10.0",
         "phpunit/phpunit": "^11"
     },
     "autoload": {
