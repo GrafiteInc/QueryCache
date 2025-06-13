@@ -74,4 +74,27 @@ class GetTest extends TestCase
             $post->name
         );
     }
+
+    public function test_get_with_string_columns_using_memo()
+    {
+        $post = factory(Post::class)->create();
+        $storedPosts = Post::get('name');
+        $tagKey = 'Grafite\QueryCache\Test\Models\Post';
+        $cache = $this->getCacheWithTags('qc:sqlitegetselect "name" from "posts"a:0:{}', [$tagKey]);
+
+        $this->assertNotNull($cache);
+
+        $this->assertEquals(
+            $cache->first()->name,
+            $storedPosts->first()->name
+        );
+
+        $this->assertEquals(
+            $cache->first()->name,
+            $post->name
+        );
+
+        // Test the memoized cache
+        $this->assertTrue(cache()->memo('file')->has('qc:sqlitegetselect "name" from "posts"a:0:{}'));
+    }
 }
