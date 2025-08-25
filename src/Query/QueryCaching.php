@@ -47,9 +47,9 @@ trait QueryCaching
         $time = $this->getCacheFor();
 
         // If the cache is in use, check the in memory cache first
-        if (method_exists(cache(), 'memo') && cache()->memo('file')->has($key)) {
-            return cache()->memo('file')->get($key);
-        }
+        // if (method_exists(cache(), 'memo') && cache()->memo()->has($key)) {
+        //     return cache()->memo()->get($key);
+        // }
 
         if ($time instanceof DateTime || $time > 0) {
             $value = $cache->remember($key, $time, $callback);
@@ -57,9 +57,9 @@ trait QueryCaching
             $value = $cache->rememberForever($key, $callback);
         }
 
-        if (method_exists(cache(), 'memo')) {
-            cache()->memo('file')->put($key, $value);
-        }
+        // if (method_exists(cache(), 'memo')) {
+        //     cache()->memo()->put($key, $value);
+        // }
 
         return $value;
     }
@@ -139,9 +139,9 @@ trait QueryCaching
             $tags = $this->getCacheBaseTags();
         }
 
-        if (method_exists(cache(), 'memo')) {
-            cache()->memo('file')->flush();
-        }
+        // if (method_exists(cache(), 'memo')) {
+        //     cache()->memo()->flush();
+        // }
 
         foreach ($tags as $tag) {
             $this->flushQueryCacheWithTag($tag);
