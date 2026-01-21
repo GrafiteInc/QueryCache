@@ -36,7 +36,7 @@ composer require "grafite/query-cache"
 
 ## Documentation
 
-[https://docs.grafite.ca/utilities/query-cache](https://docs.grafite.ca/utilities/query-cache)
+[https://documentation.grafite.ca/docs/utilities-querycache](https://documentation.grafite.ca/docs/utilities-querycache)
 
 ## License
 Support is open-sourced software licensed under the [MIT license](http://opensource.org/licenses/MIT)
