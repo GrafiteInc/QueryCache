@@ -46,20 +46,16 @@ trait QueryCaching
         $callback = $this->getQueryCacheCallback($method, $columns, $id);
         $time = $this->getCacheFor();
 
-        // If the cache is in use, check the in memory cache first
-        // if (method_exists(cache(), 'memo') && cache()->memo()->has($key)) {
-        //     return cache()->memo()->get($key);
-        // }
+        // If the cache has memoization, use it
+        if (method_exists($cache, 'memo')) {
+            $cache = $cache->memo();
+        }
 
         if ($time instanceof DateTime || $time > 0) {
             $value = $cache->remember($key, $time, $callback);
         } else {
             $value = $cache->rememberForever($key, $callback);
         }
-
-        // if (method_exists(cache(), 'memo')) {
-        //     cache()->memo()->put($key, $value);
-        // }
 
         return $value;
     }
