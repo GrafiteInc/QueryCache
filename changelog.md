@@ -3,6 +3,14 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 ----
 
+## [v1.3.0] - 2026-03-05
+
+### Feature
+- adding memo to the caching element
+
+### Chore
+- update readme
+
 ## [v1.2.0] - 2025-08-25
 
 ### Refactor
