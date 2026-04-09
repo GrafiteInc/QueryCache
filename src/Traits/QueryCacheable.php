@@ -24,7 +24,7 @@ trait QueryCacheable
      *
      * @return void
      */
-    public static function bootQueryCacheable()
+    public static function booted()
     {
         if (config('query-cache.flush_on_update')) {
             static::observe(
