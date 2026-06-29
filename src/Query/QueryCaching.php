@@ -2,8 +2,14 @@
 
 namespace Grafite\QueryCache\Query;
 
+use Closure;
 use DateTime;
-use BadMethodCallException;
+use Illuminate\Cache\CacheManager;
+use Illuminate\Cache\Repository;
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Database\Query\Builder;
+use Rennokki\QueryCache\Traits\QueryCacheModule;
 
 trait QueryCaching
 {
@@ -11,7 +17,7 @@ trait QueryCaching
      * The number of seconds or the DateTime instance
      * that specifies how long to cache the query.
      *
-     * @var int|\DateTime
+     * @var int|DateTime
      */
     protected $cacheFor;
 
@@ -42,29 +48,146 @@ trait QueryCaching
         }
 
         $key = $this->getCacheKey($method);
+
+        // In-request L1 cache: collapse repeated identical queries within a
+        // single request into a single backend round-trip. Returns null when
+        // memoization is disabled.
+        $memo = $this->queryCacheMemo();
+
+        if ($memo !== null && $memo->offsetExists($key)) {
+            return $memo[$key];
+        }
+
         $cache = $this->getCache();
         $callback = $this->getQueryCacheCallback($method, $columns, $id);
         $time = $this->getCacheFor();
 
-        // If the cache has memoization, use it
-        if (method_exists($cache, 'memo')) {
-            $cache = $cache->memo();
-        }
+        $value = $this->rememberInCache($cache, $key, $time, $callback);
 
-        if ($time instanceof DateTime || $time > 0) {
-            $value = $cache->remember($key, $time, $callback);
-        } else {
-            $value = $cache->rememberForever($key, $callback);
+        if ($memo !== null) {
+            $memo[$key] = $value;
         }
 
         return $value;
     }
 
     /**
+     * Resolve the request-scoped in-memory memoization store, or null when
+     * memoization is disabled. The store is bound as a scoped container
+     * instance so it is reset between requests/jobs (and per request under
+     * Octane), mirroring how Laravel's own MemoizedStore is scoped.
+     */
+    protected function queryCacheMemo(): ?\ArrayObject
+    {
+        if (! config('query-cache.memoize', true)) {
+            return null;
+        }
+
+        $app = app();
+        $binding = 'grafite.query-cache.memo';
+
+        if (! $app->bound($binding)) {
+            $app->scoped($binding, fn () => new \ArrayObject);
+        }
+
+        return $app->make($binding);
+    }
+
+    /**
+     * Forget every memoized result for the current request. Called whenever
+     * the cache is flushed so a write followed by a read in the same request
+     * cannot serve a stale, memoized value.
+     */
+    protected function flushQueryCacheMemo(): void
+    {
+        $this->queryCacheMemo()?->exchangeArray([]);
+    }
+
+    /**
+     * Store the callback result in the cache, optionally guarding against
+     * cache stampedes (the "thundering herd") with an atomic lock.
+     *
+     * @param  Repository  $cache
+     * @param  int|DateTime  $time
+     * @return mixed
+     */
+    protected function rememberInCache($cache, string $key, $time, Closure $callback)
+    {
+        $forever = ! ($time instanceof DateTime) && $time <= 0;
+
+        if (! config('query-cache.prevent_stampede', false)) {
+            return $forever
+                ? $cache->rememberForever($key, $callback)
+                : $cache->remember($key, $time, $callback);
+        }
+
+        return $this->rememberWithLock($cache, $key, $time, $forever, $callback);
+    }
+
+    /**
+     * Resolve a cached value while serializing concurrent misses through an
+     * atomic lock so only one worker runs the underlying query.
+     *
+     * @param  Repository  $cache
+     * @param  int|DateTime  $time
+     * @return mixed
+     */
+    protected function rememberWithLock($cache, string $key, $time, bool $forever, Closure $callback)
+    {
+        $store = $cache->getStore();
+
+        // If the store can't provide locks, fall back to the standard path.
+        if (! $store instanceof LockProvider) {
+            return $forever
+                ? $cache->rememberForever($key, $callback)
+                : $cache->remember($key, $time, $callback);
+        }
+
+        $value = $cache->get($key);
+
+        if (! is_null($value)) {
+            return $value;
+        }
+
+        $lock = $store->lock('qc-lock:'.$key, 10);
+
+        if ($lock->get()) {
+            try {
+                // Another worker may have populated the cache while we waited.
+                $value = $cache->get($key);
+
+                if (is_null($value)) {
+                    $value = $callback();
+
+                    $forever
+                        ? $cache->forever($key, $value)
+                        : $cache->put($key, $value, $time);
+                }
+
+                return $value;
+            } finally {
+                $lock->release();
+            }
+        }
+
+        // Someone else holds the lock; wait for them to populate the cache.
+        try {
+            $lock->block(5);
+            $lock->release();
+        } catch (LockTimeoutException $e) {
+            // Fall through and compute directly rather than blocking further.
+        }
+
+        $value = $cache->get($key);
+
+        return is_null($value) ? $callback() : $value;
+    }
+
+    /**
      * Get the query cache callback.
      *
      * @param  array|string  $columns
-     * @return \Closure
+     * @return Closure
      */
     public function getQueryCacheCallback(string $method = 'get', $columns = ['*'], ?string $id = null)
     {
@@ -127,44 +250,41 @@ trait QueryCaching
     {
         $cache = $this->getCacheDriver();
 
-        if (! method_exists($cache, 'tags')) {
-            return false;
-        }
-
         if (! $tags) {
             $tags = $this->getCacheBaseTags();
         }
 
-        // if (method_exists(cache(), 'memo')) {
-        //     cache()->memo()->flush();
-        // }
-
         foreach ($tags as $tag) {
-            $this->flushQueryCacheWithTag($tag);
+            $this->flushQueryCacheWithTag($tag, $cache);
         }
+
+        $this->flushQueryCacheMemo();
 
         return true;
     }
 
     /**
-     * Flush the cache for a specific tag.
+     * Flush the cache for a specific tag. Stores that do not support tagging
+     * cannot flush selectively, so the entire cache is flushed instead.
+     *
+     * @param  Repository|null  $cache
      */
-    public function flushQueryCacheWithTag(string $tag): bool
+    public function flushQueryCacheWithTag(string $tag, $cache = null): bool
     {
-        $cache = $this->getCacheDriver();
+        $cache ??= $this->getCacheDriver();
 
-        try {
+        if ($cache->supportsTags()) {
             return $cache->tags($tag)->flush();
-        } catch (BadMethodCallException $e) {
-            return $cache->flush();
         }
+
+        return $cache->flush();
     }
 
     /**
      * Indicate that the query results should be cached.
      *
-     * @param  \DateTime|int|null  $time
-     * @return \Rennokki\QueryCache\Traits\QueryCacheModule
+     * @param  DateTime|int|null  $time
+     * @return QueryCacheModule
      */
     public function cacheFor($time)
     {
@@ -176,7 +296,7 @@ trait QueryCaching
     /**
      * Indicate that the query results should be cached forever.
      *
-     * @return \Illuminate\Database\Query\Builder|static
+     * @return Builder|static
      */
     public function cacheForever()
     {
@@ -186,7 +306,7 @@ trait QueryCaching
     /**
      * Indicate that the query should not be cached.
      *
-     * @return \Illuminate\Database\Query\Builder|static
+     * @return Builder|static
      */
     public function dontCache(bool $avoidCache = true)
     {
@@ -198,7 +318,7 @@ trait QueryCaching
     /**
      * Alias for dontCache().
      *
-     * @return \Illuminate\Database\Query\Builder|static
+     * @return Builder|static
      */
     public function doNotCache(bool $avoidCache = true)
     {
@@ -208,7 +328,7 @@ trait QueryCaching
     /**
      * Get the cache driver.
      *
-     * @return \Illuminate\Cache\CacheManager
+     * @return CacheManager
      */
     public function getCacheDriver()
     {
@@ -218,21 +338,15 @@ trait QueryCaching
     /**
      * Get the cache object with tags assigned, if applicable.
      *
-     * @return \Illuminate\Cache\CacheManager
+     * @return CacheManager
      */
     public function getCache()
     {
         $cache = $this->getCacheDriver();
 
-        $tags = array_merge(
-            $this->getCacheBaseTags() ?: []
-        );
+        $tags = $this->getCacheBaseTags() ?: [];
 
-        try {
-            return $tags ? $cache->tags($tags) : $cache;
-        } catch (BadMethodCallException $e) {
-            return $cache;
-        }
+        return $tags && $cache->supportsTags() ? $cache->tags($tags) : $cache;
     }
 
     /**
@@ -255,7 +369,7 @@ trait QueryCaching
     /**
      * Get the cache time attribute.
      *
-     * @return int|\DateTime
+     * @return int|DateTime
      */
     public function getCacheFor()
     {
@@ -284,7 +398,7 @@ trait QueryCaching
      */
     public function getCachePrefix(): string
     {
-        return config('query-cache.prefix', 'qc');
+        return config('query-cache.cache_prefix', 'qc');
     }
 
     public function appendCacheTags($tags)
