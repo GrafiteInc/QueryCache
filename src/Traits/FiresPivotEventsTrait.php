@@ -10,14 +10,14 @@ trait FiresPivotEventsTrait
     /**
      * Attach a model to the parent.
      *
-     * @param mixed $id
-     * @param bool  $touch
+     * @param  mixed  $id
+     * @param  bool  $touch
      */
     public function attach($ids, array $attributes = [], $touch = true)
     {
-        list($idsOnly, $idsAttributes) = $this->getIdsWithAttributes($ids, $attributes);
+        [$idsOnly, $idsAttributes] = $this->getIdsWithAttributes($ids, $attributes);
 
-        if (false === $this->parent->fireModelEvent('pivotAttaching', true, get_class($this->getModel()), $idsOnly, $idsAttributes)) {
+        if ($this->parent->fireModelEvent('pivotAttaching', true, get_class($this->getModel()), $idsOnly, $idsAttributes) === false) {
             return false;
         }
 
@@ -30,9 +30,8 @@ trait FiresPivotEventsTrait
     /**
      * Detach models from the relationship.
      *
-     * @param mixed $ids
-     * @param bool  $touch
-     *
+     * @param  mixed  $ids
+     * @param  bool  $touch
      * @return int
      */
     public function detach($ids = null, $touch = true)
@@ -41,9 +40,9 @@ trait FiresPivotEventsTrait
             $ids = $this->query->pluck($this->query->qualifyColumn($this->relatedKey))->toArray();
         }
 
-        list($idsOnly) = $this->getIdsWithAttributes($ids);
+        [$idsOnly] = $this->getIdsWithAttributes($ids);
 
-        if (false === $this->parent->fireModelEvent('pivotDetaching', true, get_class($this->getModel()), $idsOnly)) {
+        if ($this->parent->fireModelEvent('pivotDetaching', true, get_class($this->getModel()), $idsOnly) === false) {
             return false;
         }
 
@@ -56,16 +55,15 @@ trait FiresPivotEventsTrait
     /**
      * Update an existing pivot record on the table.
      *
-     * @param mixed $id
-     * @param bool  $touch
-     *
+     * @param  mixed  $id
+     * @param  bool  $touch
      * @return int
      */
     public function updateExistingPivot($id, array $attributes, $touch = true)
     {
-        list($idsOnly, $idsAttributes) = $this->getIdsWithAttributes($id, $attributes);
+        [$idsOnly, $idsAttributes] = $this->getIdsWithAttributes($id, $attributes);
 
-        if (false === $this->parent->fireModelEvent('pivotUpdating', true, get_class($this->getModel()), $idsOnly, $idsAttributes)) {
+        if ($this->parent->fireModelEvent('pivotUpdating', true, get_class($this->getModel()), $idsOnly, $idsAttributes) === false) {
             return false;
         }
 
@@ -79,9 +77,8 @@ trait FiresPivotEventsTrait
      * Cleans the ids and ids with attributes
      * Returns an array with and array of ids and array of id => attributes.
      *
-     * @param mixed $id
-     * @param array $attributes
-     *
+     * @param  mixed  $id
+     * @param  array  $attributes
      * @return array
      */
     private function getIdsWithAttributes($id, $attributes = [])

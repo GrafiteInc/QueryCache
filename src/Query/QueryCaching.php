@@ -4,6 +4,7 @@ namespace Grafite\QueryCache\Query;
 
 use Closure;
 use DateTime;
+use Grafite\QueryCache\QueryCacheManager;
 use Illuminate\Cache\CacheManager;
 use Illuminate\Cache\Repository;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -37,6 +38,13 @@ trait QueryCaching
     protected $avoidCache = false;
 
     /**
+     * The request-scoped query cache manager.
+     *
+     * @var QueryCacheManager|null
+     */
+    protected $queryCacheManager = null;
+
+    /**
      * Get the cache from the current query.
      *
      * @return array
@@ -50,12 +58,11 @@ trait QueryCaching
         $key = $this->getCacheKey($method);
 
         // In-request L1 cache: collapse repeated identical queries within a
-        // single request into a single backend round-trip. Returns null when
-        // memoization is disabled.
-        $memo = $this->queryCacheMemo();
+        // single request into a single backend round-trip.
+        $manager = $this->queryCacheManager();
 
-        if ($memo !== null && $memo->offsetExists($key)) {
-            return $memo[$key];
+        if ($manager->memoized($key)) {
+            return $manager->memoGet($key);
         }
 
         $cache = $this->getCache();
@@ -64,43 +71,17 @@ trait QueryCaching
 
         $value = $this->rememberInCache($cache, $key, $time, $callback);
 
-        if ($memo !== null) {
-            $memo[$key] = $value;
-        }
+        $manager->memoPut($key, $value);
 
         return $value;
     }
 
     /**
-     * Resolve the request-scoped in-memory memoization store, or null when
-     * memoization is disabled. The store is bound as a scoped container
-     * instance so it is reset between requests/jobs (and per request under
-     * Octane), mirroring how Laravel's own MemoizedStore is scoped.
+     * Resolve the request-scoped query cache manager.
      */
-    protected function queryCacheMemo(): ?\ArrayObject
+    protected function queryCacheManager(): QueryCacheManager
     {
-        if (! config('query-cache.memoize', true)) {
-            return null;
-        }
-
-        $app = app();
-        $binding = 'grafite.query-cache.memo';
-
-        if (! $app->bound($binding)) {
-            $app->scoped($binding, fn () => new \ArrayObject);
-        }
-
-        return $app->make($binding);
-    }
-
-    /**
-     * Forget every memoized result for the current request. Called whenever
-     * the cache is flushed so a write followed by a read in the same request
-     * cannot serve a stale, memoized value.
-     */
-    protected function flushQueryCacheMemo(): void
-    {
-        $this->queryCacheMemo()?->exchangeArray([]);
+        return $this->queryCacheManager ??= app(QueryCacheManager::class);
     }
 
     /**
@@ -115,7 +96,7 @@ trait QueryCaching
     {
         $forever = ! ($time instanceof DateTime) && $time <= 0;
 
-        if (! config('query-cache.prevent_stampede', false)) {
+        if (! $this->queryCacheManager()->config['prevent_stampede']) {
             return $forever
                 ? $cache->rememberForever($key, $callback)
                 : $cache->remember($key, $time, $callback);
@@ -225,7 +206,7 @@ trait QueryCaching
             return $key;
         }
 
-        return md5($key);
+        return hash('xxh128', $key);
     }
 
     /**
@@ -248,36 +229,22 @@ trait QueryCaching
      */
     public function flushQueryCache(array $tags = []): bool
     {
-        $cache = $this->getCacheDriver();
-
         if (! $tags) {
-            $tags = $this->getCacheBaseTags();
+            $tags = $this->getCacheBaseTags() ?: [];
         }
 
-        foreach ($tags as $tag) {
-            $this->flushQueryCacheWithTag($tag, $cache);
-        }
-
-        $this->flushQueryCacheMemo();
-
-        return true;
+        return $this->queryCacheManager()->flush($tags);
     }
 
     /**
      * Flush the cache for a specific tag. Stores that do not support tagging
      * cannot flush selectively, so the entire cache is flushed instead.
      *
-     * @param  Repository|null  $cache
+     * @param  Repository|null  $cache  Unused; kept for backwards compatibility.
      */
     public function flushQueryCacheWithTag(string $tag, $cache = null): bool
     {
-        $cache ??= $this->getCacheDriver();
-
-        if ($cache->supportsTags()) {
-            return $cache->tags($tag)->flush();
-        }
-
-        return $cache->flush();
+        return $this->queryCacheManager()->flush([$tag]);
     }
 
     /**
@@ -332,7 +299,7 @@ trait QueryCaching
      */
     public function getCacheDriver()
     {
-        return app('cache')->driver(config('query-cache.cache_driver'));
+        return $this->queryCacheManager()->cache();
     }
 
     /**
@@ -354,7 +321,8 @@ trait QueryCaching
      */
     public function shouldAvoidCache(): bool
     {
-        return $this->avoidCache;
+        return $this->avoidCache
+            || $this->queryCacheManager()->inTransaction($this->connection);
     }
 
     /**
@@ -363,7 +331,7 @@ trait QueryCaching
      */
     public function shouldUsePlainKey(): bool
     {
-        return config('query-cache.plain_text_keys', false);
+        return (bool) $this->queryCacheManager()->config['plain_text_keys'];
     }
 
     /**
@@ -373,7 +341,7 @@ trait QueryCaching
      */
     public function getCacheFor()
     {
-        return $this->cacheFor ?? config('query-cache.ttl', 604800);
+        return $this->cacheFor ?? $this->queryCacheManager()->config['ttl'];
     }
 
     public function cacheBaseTags($tags)
@@ -398,7 +366,7 @@ trait QueryCaching
      */
     public function getCachePrefix(): string
     {
-        return config('query-cache.cache_prefix', 'qc');
+        return $this->queryCacheManager()->config['cache_prefix'];
     }
 
     public function appendCacheTags($tags)

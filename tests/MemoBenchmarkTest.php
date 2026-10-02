@@ -2,17 +2,20 @@
 
 namespace Grafite\QueryCache\Test;
 
+use Grafite\QueryCache\Observers\FlushQueryCacheObserver;
 use Grafite\QueryCache\Test\Models\Post;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
  * Not part of the default suite. Run explicitly with:
  *
- *   ./vendor/bin/phpunit --group benchmark
+ *   XDEBUG_MODE=off ./vendor/bin/phpunit --group benchmark
  *
  * If a Redis server is reachable on 127.0.0.1:6379 it is benchmarked too,
- * which is where memoization actually pays off (it removes round-trips).
+ * which is where memoization and flush batching actually pay off (they
+ * remove round-trips).
  *
  * @group benchmark
  */
@@ -24,47 +27,83 @@ class MemoBenchmarkTest extends TestCase
     private const READS = 20000;
 
     /**
+     * Number of model invalidations timed per measurement.
+     */
+    private const WRITES = 500;
+
+    /**
+     * Number of multi-tag flushes timed per measurement.
+     */
+    private const FLUSHES = 500;
+
+    /**
      * Small result set so Eloquent hydration (paid equally by both paths)
      * does not drown out the cache-access cost we are trying to compare.
      */
     private const ROWS = 3;
 
+    private const DRIVERS = ['array', 'file', 'redis'];
+
     public function test_memoization_repeat_read_cost()
     {
         factory(Post::class, self::ROWS)->create();
 
-        $line = str_repeat('=', 70);
-
-        foreach (['array', 'redis'] as $driver) {
-            if (! $this->driverIsAvailable($driver)) {
-                $this->write("\nSkipping '{$driver}' driver: not reachable.");
-
-                continue;
-            }
-
-            $this->write("\n{$line}");
-            $this->write(sprintf('Cache driver: %s   |   %s repeated Post::get() reads (%d rows)',
+        foreach ($this->availableDrivers() as $driver) {
+            $this->header(sprintf('Cache driver: %s   |   %s repeated Post::get() reads (%d rows)',
                 $driver, number_format(self::READS), self::ROWS));
-            $this->write($line);
-            $this->write(sprintf('%-20s %14s %16s %10s', 'mode', 'total (ms)', 'per call (µs)', 'vs L2'));
-            $this->write(str_repeat('-', 70));
 
-            $l2 = $this->measure($driver, false);
-            $l1 = $this->measure($driver, true);
+            $l2 = $this->measureReads($driver, false);
+            $l1 = $this->measureReads($driver, true);
 
             $this->report('L2 (backend hit)', $l2, $l2);
             $this->report('L1 (memoized)', $l1, $l2);
-
-            $perCallSaved = $l2['perCall'] - $l1['perCall'];
-            $this->write(str_repeat('-', 70));
-            $this->write(sprintf('Per-call saved by memoization: %.2f µs   (%s backend reads removed)',
-                $perCallSaved, number_format(self::READS - 1)));
-            $this->write(sprintf('Extrapolated saving across this run: %.1f ms',
-                $perCallSaved * (self::READS - 1) / 1000));
-            $this->write($line);
+            $this->footer();
         }
 
-        $this->write('');
+        $this->assertTrue(true);
+    }
+
+    public function test_invalidation_cost()
+    {
+        $post = factory(Post::class)->create();
+        $observer = new FlushQueryCacheObserver;
+
+        foreach ($this->availableDrivers() as $driver) {
+            $this->header(sprintf('Cache driver: %s   |   %s model invalidations (observer updated())',
+                $driver, number_format(self::WRITES)));
+
+            $outside = $this->measure($driver, self::WRITES, function () use ($observer, $post) {
+                $observer->updated($post);
+            });
+
+            $inside = $this->measure($driver, self::WRITES, function () use ($observer, $post) {
+                $observer->updated($post);
+            }, function (callable $run) {
+                DB::transaction($run);
+            });
+
+            $this->report('outside transaction', $outside, $outside);
+            $this->report('inside transaction', $inside, $outside);
+            $this->footer();
+        }
+
+        $this->assertTrue(true);
+    }
+
+    public function test_multi_tag_flush_cost()
+    {
+        foreach ($this->availableDrivers() as $driver) {
+            $this->header(sprintf('Cache driver: %s   |   %s flushQueryCache() calls with 3 tags',
+                $driver, number_format(self::FLUSHES)));
+
+            $result = $this->measure($driver, self::FLUSHES, function () {
+                Post::flushQueryCache(['bench-a', 'bench-b', 'bench-c']);
+            });
+
+            $this->report('3-tag flush', $result, $result);
+            $this->footer();
+        }
+
         $this->assertTrue(true);
     }
 
@@ -73,34 +112,69 @@ class MemoBenchmarkTest extends TestCase
      *
      * @return array{total: float, perCall: float}
      */
-    private function measure(string $driver, bool $memoize): array
+    private function measureReads(string $driver, bool $memoize): array
     {
-        config()->set('query-cache.cache_driver', $driver);
         config()->set('query-cache.memoize', $memoize);
 
-        // Start cold so the first read is the single shared miss, then warm
-        // both L2 (backend) and, when enabled, L1 (in-request memo).
+        return $this->measure($driver, self::READS, fn () => Post::get(), null, fn () => Post::get());
+    }
+
+    /**
+     * Time $iterations calls of $operation against a cold cache, optionally
+     * wrapping the whole loop (e.g. in a transaction) and warming first.
+     *
+     * @return array{total: float, perCall: float}
+     */
+    private function measure(string $driver, int $iterations, callable $operation, ?callable $wrap = null, ?callable $warm = null): array
+    {
+        config()->set('query-cache.cache_driver', $driver);
+
         Cache::store($driver)->flush();
         app()->forgetScopedInstances();
-        Post::get();
+
+        if ($warm) {
+            $warm();
+        }
+
+        $loop = function () use ($iterations, $operation) {
+            for ($i = 0; $i < $iterations; $i++) {
+                $operation();
+            }
+        };
 
         $start = hrtime(true);
 
-        for ($i = 0; $i < self::READS; $i++) {
-            Post::get();
-        }
+        $wrap ? $wrap($loop) : $loop();
 
         $totalNs = hrtime(true) - $start;
 
         return [
             'total' => $totalNs / 1_000_000,             // ms
-            'perCall' => $totalNs / self::READS / 1_000, // µs
+            'perCall' => $totalNs / $iterations / 1_000, // µs
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function availableDrivers(): array
+    {
+        $drivers = array_values(array_filter(self::DRIVERS, function ($driver) {
+            if ($this->driverIsAvailable($driver)) {
+                return true;
+            }
+
+            $this->write("\nSkipping '{$driver}' driver: not reachable.");
+
+            return false;
+        }));
+
+        return $drivers;
     }
 
     private function driverIsAvailable(string $driver): bool
     {
-        if ($driver === 'array') {
+        if (in_array($driver, ['array', 'file'])) {
             return true;
         }
 
@@ -136,6 +210,22 @@ class MemoBenchmarkTest extends TestCase
         return false;
     }
 
+    private function header(string $title): void
+    {
+        $line = str_repeat('=', 78);
+
+        $this->write("\n{$line}");
+        $this->write($title);
+        $this->write($line);
+        $this->write(sprintf('%-24s %14s %16s %10s', 'mode', 'total (ms)', 'per call (µs)', 'vs base'));
+        $this->write(str_repeat('-', 78));
+    }
+
+    private function footer(): void
+    {
+        $this->write(str_repeat('=', 78));
+    }
+
     /**
      * @param  array{total: float, perCall: float}  $result
      * @param  array{total: float, perCall: float}  $baseline
@@ -146,7 +236,7 @@ class MemoBenchmarkTest extends TestCase
             ? sprintf('%.2fx', $baseline['total'] / $result['total'])
             : '—';
 
-        $this->write(sprintf('%-20s %14.2f %16.2f %10s',
+        $this->write(sprintf('%-24s %14.2f %16.2f %10s',
             $label, $result['total'], $result['perCall'], $speedup));
     }
 

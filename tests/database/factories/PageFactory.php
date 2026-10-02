@@ -11,9 +11,10 @@
 |
 */
 
+use Grafite\QueryCache\Test\Models\Page;
 use Illuminate\Support\Str;
 
-$factory->define(\Grafite\QueryCache\Test\Models\Page::class, function () {
+$factory->define(Page::class, function () {
     return [
         'name' => 'Page'.Str::random(5),
     ];

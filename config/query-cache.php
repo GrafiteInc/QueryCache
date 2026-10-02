@@ -17,4 +17,13 @@ return [
     // In-request memoization: serve repeated identical queries within a single
     // request from memory instead of hitting the cache backend each time.
     'memoize' => env('QUERY_CACHE_MEMOIZE', true),
+
+    // Maximum number of memoized results held per request. The oldest entry
+    // is evicted once reached so long-running processes stay bounded.
+    'memoize_limit' => env('QUERY_CACHE_MEMOIZE_LIMIT', 1000),
+
+    // Bypass the cache for queries run inside a database transaction (they
+    // may see uncommitted data) and defer cache flushes until commit, so many
+    // writes in one transaction share a single flush.
+    'skip_in_transactions' => env('QUERY_CACHE_SKIP_IN_TRANSACTIONS', true),
 ];

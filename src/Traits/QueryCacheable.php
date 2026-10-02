@@ -4,6 +4,7 @@ namespace Grafite\QueryCache\Traits;
 
 use Grafite\QueryCache\Observers\FlushQueryCacheObserver;
 use Grafite\QueryCache\Query\Builder;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * @method static bool flushQueryCache(array $tags = [])
@@ -61,7 +62,7 @@ trait QueryCacheable
      * which tags to invalidate.
      *
      * @param  string|null  $relation
-     * @param  \Illuminate\Database\Eloquent\Collection|null  $pivotedModels
+     * @param  Collection|null  $pivotedModels
      */
     public function getCacheTagsToInvalidateOnUpdate($relation = null, $pivotedModels = null): array
     {

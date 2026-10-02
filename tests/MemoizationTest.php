@@ -2,6 +2,7 @@
 
 namespace Grafite\QueryCache\Test;
 
+use Grafite\QueryCache\QueryCacheManager;
 use Grafite\QueryCache\Test\Models\Post;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -85,5 +86,38 @@ class MemoizationTest extends TestCase
 
         $this->assertNotEmpty(DB::connection()->getQueryLog());
         $this->assertCount(4, $afterWrite);
+    }
+
+    /**
+     * The memoization store is capped so long-running processes (e.g. a
+     * chunk() loop in a command) cannot grow it without bound; the oldest
+     * entry is evicted first.
+     */
+    public function test_memoization_store_evicts_oldest_entry_at_limit()
+    {
+        config()->set('query-cache.memoize', true);
+        config()->set('query-cache.memoize_limit', 2);
+
+        factory(Post::class, 3)->create();
+
+        Post::where('id', 1)->get();
+        Post::where('id', 2)->get();
+        Post::where('id', 3)->get();
+
+        $this->assertSame(2, app(QueryCacheManager::class)->memoCount());
+
+        Cache::flush();
+
+        DB::connection()->flushQueryLog();
+        DB::connection()->enableQueryLog();
+
+        // Newest entries are still served from memory...
+        Post::where('id', 2)->get();
+        Post::where('id', 3)->get();
+        $this->assertCount(0, DB::connection()->getQueryLog());
+
+        // ...while the oldest was evicted and has to go back to the database.
+        Post::where('id', 1)->get();
+        $this->assertCount(1, DB::connection()->getQueryLog());
     }
 }

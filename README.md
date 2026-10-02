@@ -38,6 +38,18 @@ composer require "grafite/query-cache"
 
 [https://documentation.grafite.ca/docs/utilities-querycache](https://documentation.grafite.ca/docs/utilities-querycache)
 
+### Transactions
+
+Queries run inside a database transaction bypass the cache, since they may see uncommitted data. Cache flushes triggered by model writes inside a transaction are deferred until it commits, and all writes in that transaction share a single flush (a rollback flushes nothing). Set `skip_in_transactions` (`QUERY_CACHE_SKIP_IN_TRANSACTIONS`) to `false` to cache inside transactions, e.g. when your test suite wraps every test in one.
+
+### Memoization limit
+
+Repeated identical queries within a request are served from memory. `memoize_limit` (`QUERY_CACHE_MEMOIZE_LIMIT`, default `1000`) caps how many results are held, evicting the oldest first, so long-running commands stay bounded.
+
+### Upgrading
+
+Hashed cache keys now use `xxh128` instead of `md5`, so existing cached queries will miss once after upgrading.
+
 ## License
 Support is open-sourced software licensed under the [MIT license](http://opensource.org/licenses/MIT)
 

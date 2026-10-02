@@ -2,12 +2,17 @@
 
 namespace Grafite\QueryCache\Test;
 
+use Grafite\QueryCache\QueryCacheManager;
+use Grafite\QueryCache\QueryCacheProvider;
 use Grafite\QueryCache\Test\Models\Book;
 use Grafite\QueryCache\Test\Models\Kid;
 use Grafite\QueryCache\Test\Models\Page;
 use Grafite\QueryCache\Test\Models\Post;
 use Grafite\QueryCache\Test\Models\User;
 use Illuminate\Support\Facades\Cache;
+use Livewire\LivewireServiceProvider;
+use Mockery;
+use Mockery\MockInterface;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 abstract class TestCase extends Orchestra
@@ -41,8 +46,8 @@ abstract class TestCase extends Orchestra
     protected function getPackageProviders($app)
     {
         return [
-            \Livewire\LivewireServiceProvider::class,
-            \Grafite\QueryCache\QueryCacheProvider::class,
+            LivewireServiceProvider::class,
+            QueryCacheProvider::class,
         ];
     }
 
@@ -121,6 +126,19 @@ abstract class TestCase extends Orchestra
         return $this->driverSupportsTags()
             ? Cache::tags($tags)->get($key)
             : Cache::get($key);
+    }
+
+    /**
+     * Swap the request-scoped manager for a partial mock that passes every
+     * call through, so tests can count flushes.
+     */
+    protected function spyOnQueryCacheManager(): MockInterface
+    {
+        $manager = Mockery::mock(QueryCacheManager::class, [config('query-cache', [])])->makePartial();
+
+        $this->app->instance(QueryCacheManager::class, $manager);
+
+        return $manager;
     }
 
     public static function strictModeContextProvider(): iterable

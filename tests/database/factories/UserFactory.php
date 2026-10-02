@@ -11,9 +11,10 @@
 |
 */
 
+use Grafite\QueryCache\Test\Models\User;
 use Illuminate\Support\Str;
 
-$factory->define(\Grafite\QueryCache\Test\Models\User::class, function () {
+$factory->define(User::class, function () {
     return [
         'name' => 'Name'.Str::random(5),
         'email' => Str::random(5).'@gmail.com',

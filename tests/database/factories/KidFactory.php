@@ -11,9 +11,10 @@
 |
 */
 
+use Grafite\QueryCache\Test\Models\Kid;
 use Illuminate\Support\Str;
 
-$factory->define(\Grafite\QueryCache\Test\Models\Kid::class, function () {
+$factory->define(Kid::class, function () {
     return [
         'name' => 'Kid'.Str::random(5),
     ];

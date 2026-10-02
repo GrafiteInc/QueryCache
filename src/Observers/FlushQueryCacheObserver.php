@@ -3,6 +3,8 @@
 namespace Grafite\QueryCache\Observers;
 
 use Exception;
+use Grafite\QueryCache\QueryCacheManager;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 class FlushQueryCacheObserver
@@ -86,21 +88,12 @@ class FlushQueryCacheObserver
     {
         $this->invalidateCache($model, $relation, $pivotedModels);
     }
-    /**
-     * Handle the Model "pivotUpdating" event.
-     *
-     * @return void
-     */
-    public function pivotUpdating(Model $model, $relation, $pivotedModels)
-    {
-        $this->invalidateCache($model, $relation, $pivotedModels);
-    }
 
     /**
      * Invalidate the cache for a model.
      *
      * @param  string|null  $relation
-     * @param  \Illuminate\Database\Eloquent\Collection|null  $pivotedModels
+     * @param  Collection|null  $pivotedModels
      *
      * @throws Exception
      */
@@ -114,6 +107,17 @@ class FlushQueryCacheObserver
             throw new Exception('Automatic invalidation for '.$class.' works only if at least one tag to be invalidated is specified.');
         }
 
-        $class::flushQueryCache($tags);
+        $manager = app(QueryCacheManager::class);
+        $connection = $model->getConnection();
+
+        // Inside a transaction, defer to a single flush on commit. Reads in
+        // the transaction bypass the cache, so nothing stale can be served.
+        if ($manager->inTransaction($connection)) {
+            $manager->flushAfterCommit($connection, $tags);
+
+            return;
+        }
+
+        $manager->flush($tags);
     }
 }

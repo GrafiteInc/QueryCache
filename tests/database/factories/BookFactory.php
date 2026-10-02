@@ -11,9 +11,10 @@
 |
 */
 
+use Grafite\QueryCache\Test\Models\Book;
 use Illuminate\Support\Str;
 
-$factory->define(\Grafite\QueryCache\Test\Models\Book::class, function () {
+$factory->define(Book::class, function () {
     return [
         'name' => 'Book'.Str::random(5),
     ];

@@ -4,8 +4,8 @@ namespace Grafite\QueryCache\Traits;
 
 trait PivotEventTrait
 {
-    use ExtendRelationsTrait;
     use ExtendFireModelEventTrait;
+    use ExtendRelationsTrait;
 
     /**
      * Get the observable event names.

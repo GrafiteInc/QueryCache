@@ -25,6 +25,10 @@ class QueryCacheProvider extends ServiceProvider
      */
     public function register()
     {
+        $this->app->scoped(QueryCacheManager::class, function ($app) {
+            return new QueryCacheManager($app['config']->get('query-cache', []));
+        });
+
         // $this->commands([
         //     QueryCachePurgeTag::class,
         // ]);

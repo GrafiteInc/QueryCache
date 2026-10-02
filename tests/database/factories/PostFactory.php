@@ -11,9 +11,10 @@
 |
 */
 
+use Grafite\QueryCache\Test\Models\Post;
 use Illuminate\Support\Str;
 
-$factory->define(\Grafite\QueryCache\Test\Models\Post::class, function () {
+$factory->define(Post::class, function () {
     return [
         'name' => 'Post'.Str::random(5),
     ];

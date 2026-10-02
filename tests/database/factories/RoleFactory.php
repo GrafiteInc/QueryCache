@@ -11,9 +11,10 @@
 |
 */
 
+use Grafite\QueryCache\Test\Models\Role;
 use Illuminate\Support\Str;
 
-$factory->define(\Grafite\QueryCache\Test\Models\Role::class, function () {
+$factory->define(Role::class, function () {
     return [
         'name' => 'Role'.Str::random(5),
     ];

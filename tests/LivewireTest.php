@@ -6,6 +6,7 @@ use Grafite\QueryCache\Test\Models\Post;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 use Livewire\Livewire;
+use Livewire\Testing\TestableLivewire;
 
 class LivewireTest extends TestCase
 {
@@ -19,7 +20,7 @@ class LivewireTest extends TestCase
 
         $posts = factory(Post::class, 30)->create();
 
-        /** @var \Livewire\Testing\TestableLivewire $component */
+        /** @var TestableLivewire $component */
         Livewire::test(PostComponent::class, ['post' => $posts->first()])
             ->assertOk()
             ->assertSee($posts[0]->name);
